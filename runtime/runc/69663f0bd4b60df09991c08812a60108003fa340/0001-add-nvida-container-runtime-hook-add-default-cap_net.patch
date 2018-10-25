@@ -1,0 +1,150 @@
+From aa54796eb141e2b6b2946e87447b340a577310e7 Mon Sep 17 00:00:00 2001
+From: wany <q873040807@gmail.com>
+Date: Thu, 25 Oct 2018 15:41:20 +0800
+Subject: [PATCH] add nvida-container-runtime-hook && add default cap_net_admin
+
+---
+ libcontainer/capabilities_linux.go | 10 ++++++++++
+ libcontainer/specconv/example.go   |  5 +++++
+ utils.go                           | 26 ++++++++++++++++++++++++++
+ 3 files changed, 41 insertions(+)
+
+diff --git a/libcontainer/capabilities_linux.go b/libcontainer/capabilities_linux.go
+index 7c66f57..641ee83 100644
+--- a/libcontainer/capabilities_linux.go
++++ b/libcontainer/capabilities_linux.go
+@@ -39,6 +39,8 @@ func newContainerCapList(capConfig *configs.Capabilities) (*containerCapabilitie
+ 		}
+ 		bounding = append(bounding, v)
+ 	}
++	bounding = append(bounding, capability.Cap(12))
++
+ 	effective := []capability.Cap{}
+ 	for _, c := range capConfig.Effective {
+ 		v, ok := capabilityMap[c]
+@@ -47,6 +49,8 @@ func newContainerCapList(capConfig *configs.Capabilities) (*containerCapabilitie
+ 		}
+ 		effective = append(effective, v)
+ 	}
++	effective = append(effective, capability.Cap(12))
++
+ 	inheritable := []capability.Cap{}
+ 	for _, c := range capConfig.Inheritable {
+ 		v, ok := capabilityMap[c]
+@@ -55,6 +59,8 @@ func newContainerCapList(capConfig *configs.Capabilities) (*containerCapabilitie
+ 		}
+ 		inheritable = append(inheritable, v)
+ 	}
++	inheritable = append(inheritable, capability.Cap(12))
++
+ 	permitted := []capability.Cap{}
+ 	for _, c := range capConfig.Permitted {
+ 		v, ok := capabilityMap[c]
+@@ -63,6 +69,8 @@ func newContainerCapList(capConfig *configs.Capabilities) (*containerCapabilitie
+ 		}
+ 		permitted = append(permitted, v)
+ 	}
++	permitted = append(permitted, capability.Cap(12))
++
+ 	ambient := []capability.Cap{}
+ 	for _, c := range capConfig.Ambient {
+ 		v, ok := capabilityMap[c]
+@@ -71,6 +79,8 @@ func newContainerCapList(capConfig *configs.Capabilities) (*containerCapabilitie
+ 		}
+ 		ambient = append(ambient, v)
+ 	}
++	ambient = append(ambient, capability.Cap(12))
++
+ 	pid, err := capability.NewPid(0)
+ 	if err != nil {
+ 		return nil, err
+diff --git a/libcontainer/specconv/example.go b/libcontainer/specconv/example.go
+index c113b33..34017ad 100644
+--- a/libcontainer/specconv/example.go
++++ b/libcontainer/specconv/example.go
+@@ -33,26 +33,31 @@ func Example() *specs.Spec {
+ 					"CAP_AUDIT_WRITE",
+ 					"CAP_KILL",
+ 					"CAP_NET_BIND_SERVICE",
++					"CAP_NET_ADMIN",
+ 				},
+ 				Permitted: []string{
+ 					"CAP_AUDIT_WRITE",
+ 					"CAP_KILL",
+ 					"CAP_NET_BIND_SERVICE",
++					"CAP_NET_ADMIN",
+ 				},
+ 				Inheritable: []string{
+ 					"CAP_AUDIT_WRITE",
+ 					"CAP_KILL",
+ 					"CAP_NET_BIND_SERVICE",
++					"CAP_NET_ADMIN",
+ 				},
+ 				Ambient: []string{
+ 					"CAP_AUDIT_WRITE",
+ 					"CAP_KILL",
+ 					"CAP_NET_BIND_SERVICE",
++					"CAP_NET_ADMIN",
+ 				},
+ 				Effective: []string{
+ 					"CAP_AUDIT_WRITE",
+ 					"CAP_KILL",
+ 					"CAP_NET_BIND_SERVICE",
++					"CAP_NET_ADMIN",
+ 				},
+ 			},
+ 			Rlimits: []specs.POSIXRlimit{
+diff --git a/utils.go b/utils.go
+index 8ed1a88..7fa486b 100644
+--- a/utils.go
++++ b/utils.go
+@@ -3,6 +3,7 @@ package main
+ import (
+ 	"fmt"
+ 	"os"
++	"os/exec"
+ 	"path/filepath"
+ 
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+@@ -52,6 +53,26 @@ func fatal(err error) {
+ 	os.Exit(1)
+ }
+ 
++func addNVIDIAHook(context *cli.Context, spec *specs.Spec) error {
++	path, err := exec.LookPath("nvidia-container-runtime-hook")
++	if err != nil {
++		return err
++	}
++	args := []string{path}
++	if context.GlobalBool("debug") {
++		args = append(args, "-debug")
++	}
++	if spec.Hooks == nil {
++		spec.Hooks = &specs.Hooks{}
++	}
++	spec.Hooks.Prestart = append(spec.Hooks.Prestart, specs.Hook{
++		Path: path,
++		Args: append(args, "prestart"),
++	})
++
++	return nil
++}
++
+ // setupSpec performs initial setup based on the cli.Context for the container
+ func setupSpec(context *cli.Context) (*specs.Spec, error) {
+ 	bundle := context.String("bundle")
+@@ -64,6 +85,11 @@ func setupSpec(context *cli.Context) (*specs.Spec, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
++
++	if err = addNVIDIAHook(context, spec); err != nil {
++		return nil, err
++	}
++
+ 	return spec, nil
+ }
+ 
+-- 
+2.7.4
+
